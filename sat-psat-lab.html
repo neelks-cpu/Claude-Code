@@ -2267,10 +2267,36 @@ function seededShuffle(arr, seed){ const a=arr.slice(); const rnd=mulberry32(see
    ------------------------------------------------------------------------- */
 const HAPTIC_PATTERNS={ correct:[45], wrong:[70,45,70], streak:[30,55,30,55,110], done:[20,35,20], tap:[18] };
 function hapticsSupported(){ return typeof navigator!=='undefined' && typeof navigator.vibrate==='function'; }
+
+/* iOS Safari has no navigator.vibrate, but iOS 17.4+ fires a system haptic
+   when a native <input type="checkbox" switch> toggles. We keep one hidden,
+   rendered (not display:none) switch and click its label inside the user
+   gesture to produce a real taptic tap. Repeated taps differentiate events. */
+let _hapSwitch=null;
+function ensureHapSwitch(){
+  if(_hapSwitch!==null) return _hapSwitch;
+  if(!hasDoc || !document.body){ _hapSwitch=false; return false; }
+  try{
+    const label=document.createElement('label');
+    label.setAttribute('aria-hidden','true');
+    label.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none;z-index:-1';
+    const input=document.createElement('input');
+    input.type='checkbox'; input.setAttribute('switch',''); input.tabIndex=-1;
+    label.appendChild(input); document.body.appendChild(label);
+    _hapSwitch={label,input};
+  }catch(e){ _hapSwitch=false; }
+  return _hapSwitch;
+}
+function iosHaptic(kind){
+  const sw=ensureHapSwitch(); if(!sw) return;
+  const taps = kind==='streak'?3 : kind==='wrong'?2 : 1;
+  try{ for(let i=0;i<taps;i++) sw.label.click(); }catch(e){}
+}
 function haptic(kind){
   try{
     if(STATE.haptics===false) return;
     if(hapticsSupported()) navigator.vibrate(HAPTIC_PATTERNS[kind]||[20]);
+    else iosHaptic(kind);   // iOS 17.4+ system-haptic fallback
   }catch(e){}
 }
 
@@ -3393,8 +3419,8 @@ function viewSettings(v){
           <button data-v="0" class="${STATE.haptics===false?'active':''}">Off</button>
         </div>
         <div class="muted" style="font-size:12px;margin-top:8px">${hapticsSupported()
-          ? '✓ Your device supports vibration.'
-          : 'Heads up: this device/browser can’t vibrate from the web (iPhones &amp; most desktops don’t support it). Turn on <b>Sound</b> below for feedback you’ll actually notice.'}</div>
+          ? '✓ Your device supports vibration (Android).'
+          : 'On iPhone we use iOS’s built-in haptic tap (needs iOS 17.4+ and the ringer switch on). Tap <b>Test feedback</b> to check — if you don’t feel it, keep <b>Sound</b> on as well. Desktops won’t buzz.'}</div>
       </div>
       <div class="field"><label>Sound — a tone on each answer (works on every device, incl. iPhone)</label>
         <div class="seg" id="snd">
@@ -3444,7 +3470,7 @@ function viewSettings(v){
     const note=v.querySelector('#testfb-note');
     if(note) note.innerHTML = hapticsSupported()
       ? 'Buzz + sound sent. Feel/hear that?'
-      : 'Sound sent (no vibration on this device).';
+      : 'Sent — on iPhone (iOS 17.4+) you should feel a tap; sound plays too.';
   };
   v.querySelector('#save').onclick=()=>{
     STATE.name=v.querySelector('#nm').value.trim();
