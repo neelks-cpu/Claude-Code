@@ -2094,7 +2094,7 @@ function sprCorrect(input, accepted){
    STATE  (localStorage: scorelab_v2)
    ------------------------------------------------------------------------- */
 const LS_KEY='scorelab_v2';
-const DEFAULT_STATE={ name:'', target:'sat', log:[], streak:0, lastDay:null, history:[], haptics:true, coPilot:true, bestStreak:0, goal:1600 };
+const DEFAULT_STATE={ name:'', target:'sat', log:[], streak:0, lastDay:null, history:[], haptics:true, sound:true, coPilot:true, bestStreak:0, goal:1600 };
 let STATE=loadState();
 
 function loadState(){
@@ -2263,15 +2263,55 @@ function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.im
 function seededShuffle(arr, seed){ const a=arr.slice(); const rnd=mulberry32(seed>>>0); for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
 /* ---------------------------------------------------------------------------
-   HAPTICS — distinct vibration patterns (respects the settings toggle)
+   HAPTICS — vibration patterns (Android/Chrome; iOS Safari has no web vibrate)
    ------------------------------------------------------------------------- */
-const HAPTIC_PATTERNS={ correct:[26], wrong:[55,45,55], streak:[18,40,18,40,70], done:[14,28,14], tap:[10] };
+const HAPTIC_PATTERNS={ correct:[45], wrong:[70,45,70], streak:[30,55,30,55,110], done:[20,35,20], tap:[18] };
+function hapticsSupported(){ return typeof navigator!=='undefined' && typeof navigator.vibrate==='function'; }
 function haptic(kind){
   try{
     if(STATE.haptics===false) return;
-    if(typeof navigator!=='undefined' && typeof navigator.vibrate==='function') navigator.vibrate(HAPTIC_PATTERNS[kind]||[18]);
+    if(hapticsSupported()) navigator.vibrate(HAPTIC_PATTERNS[kind]||[20]);
   }catch(e){}
 }
+
+/* ---------------------------------------------------------------------------
+   SOUND — WebAudio feedback (works everywhere incl. iPhone, offline, no files)
+   correct = bright rising ding · wrong = soft low tone · streak = sparkle
+   ------------------------------------------------------------------------- */
+let _actx=null;
+function audioCtx(){
+  if(_actx) return _actx;
+  try{ const AC=(typeof window!=='undefined')&&(window.AudioContext||window.webkitAudioContext); if(AC) _actx=new AC(); }catch(e){}
+  return _actx;
+}
+const SOUND_SPECS={
+  correct:[[660,0,0.10],[988,0.07,0.14]],
+  streak :[[523,0,0.09],[659,0.08,0.09],[880,0.17,0.16]],
+  wrong  :[[180,0,0.20]],
+  tap    :[[520,0,0.035]],
+  done   :[[587,0,0.10],[880,0.09,0.16]]
+};
+function sound(kind){
+  try{
+    if(STATE.sound===false) return;
+    const ctx=audioCtx(); if(!ctx) return;
+    if(ctx.state==='suspended' && ctx.resume) ctx.resume();
+    const spec=SOUND_SPECS[kind]||SOUND_SPECS.tap;
+    const t0=ctx.currentTime;
+    for(const [freq,start,dur] of spec){
+      const osc=ctx.createOscillator(), g=ctx.createGain();
+      osc.type = (kind==='wrong')?'triangle':'sine';
+      osc.frequency.value=freq;
+      g.gain.setValueAtTime(0.0001, t0+start);
+      g.gain.exponentialRampToValueAtTime(0.25, t0+start+0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+start+dur);
+      osc.connect(g); g.connect(ctx.destination);
+      osc.start(t0+start); osc.stop(t0+start+dur+0.03);
+    }
+  }catch(e){}
+}
+/* Combined answer feedback: buzz (if supported) + sound. */
+function feedback(kind){ haptic(kind); sound(kind); }
 
 /* ---------------------------------------------------------------------------
    CO-PILOT CHARACTER — "Vega", a cockpit navigator with reactions
@@ -2560,7 +2600,7 @@ function runQueue(container, opts){
     recordAttempt(q, correct);
     if(correct){ correctCount++; runStreak++; } else { runStreak=0; }
     if(runStreak>(STATE.bestStreak||0)){ STATE.bestStreak=runStreak; saveState(); }
-    haptic(correct ? (runStreak>=3?'streak':'correct') : 'wrong');
+    feedback(correct ? (runStreak>=3?'streak':'correct') : 'wrong');
     // lock UI + mark
     const zone=container.querySelector('#answerzone');
     if(q.type==='spr'){
@@ -3346,12 +3386,23 @@ function viewSettings(v){
     </div>
     <div class="card">
       <h2>Feel &amp; feedback</h2>
-      <div class="sub">Tune the tactile buzz and your on-screen co-pilot.</div>
-      <div class="field"><label>Haptics — vibrate on answers (supported phones/tablets)</label>
+      <div class="sub">Tune the buzz, the sound, and your on-screen co-pilot.</div>
+      <div class="field"><label>Haptics — vibrate on answers</label>
         <div class="seg" id="hap">
           <button data-v="1" class="${STATE.haptics!==false?'active':''}">On</button>
           <button data-v="0" class="${STATE.haptics===false?'active':''}">Off</button>
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:8px">${hapticsSupported()
+          ? '✓ Your device supports vibration.'
+          : 'Heads up: this device/browser can’t vibrate from the web (iPhones &amp; most desktops don’t support it). Turn on <b>Sound</b> below for feedback you’ll actually notice.'}</div>
+      </div>
+      <div class="field"><label>Sound — a tone on each answer (works on every device, incl. iPhone)</label>
+        <div class="seg" id="snd">
+          <button data-v="1" class="${STATE.sound!==false?'active':''}">On</button>
+          <button data-v="0" class="${STATE.sound===false?'active':''}">Off</button>
         </div></div>
+      <div class="btnrow" style="margin:2px 0 8px"><button class="btn ghost sm" id="testfb">▶ Test feedback</button>
+        <span class="muted" id="testfb-note" style="font-size:12px;align-self:center"></span></div>
       <div class="field"><label>Vega, your co-pilot — reactions &amp; coaching lines</label>
         <div class="seg" id="cop">
           <button data-v="1" class="${STATE.coPilot!==false?'active':''}">On</button>
@@ -3383,7 +3434,18 @@ function viewSettings(v){
       seg.querySelectorAll('button').forEach(x=>x.classList.remove('active')); b.classList.add('active');
       setter(b.dataset.v==='1'); saveState(); haptic('tap'); }); };
   segToggle('#hap',val=>{ STATE.haptics=val; });
+  segToggle('#snd',val=>{ STATE.sound=val; if(val) sound('correct'); });
   segToggle('#cop',val=>{ STATE.coPilot=val; });
+  const tb=v.querySelector('#testfb');
+  if(tb) tb.onclick=()=>{
+    feedback('correct');
+    setTimeout(()=>feedback('streak'),380);
+    setTimeout(()=>feedback('wrong'),820);
+    const note=v.querySelector('#testfb-note');
+    if(note) note.innerHTML = hapticsSupported()
+      ? 'Buzz + sound sent. Feel/hear that?'
+      : 'Sound sent (no vibration on this device).';
+  };
   v.querySelector('#save').onclick=()=>{
     STATE.name=v.querySelector('#nm').value.trim();
     const g=parseInt(String(v.querySelector('#goal').value).replace(/[^0-9]/g,''),10);
