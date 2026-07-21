@@ -2094,7 +2094,7 @@ function sprCorrect(input, accepted){
    STATE  (localStorage: scorelab_v2)
    ------------------------------------------------------------------------- */
 const LS_KEY='scorelab_v2';
-const DEFAULT_STATE={ name:'', target:'sat', log:[], streak:0, lastDay:null, history:[], haptics:true, coPilot:true, bestStreak:0, goal:1520 };
+const DEFAULT_STATE={ name:'', target:'sat', log:[], streak:0, lastDay:null, history:[], haptics:true, coPilot:true, bestStreak:0, goal:1600 };
 let STATE=loadState();
 
 function loadState(){
@@ -2177,7 +2177,7 @@ function projectedTotal(){
 /* Aspirational goal score (settable), clamped to the current scale. */
 function goalScore(){
   const sc=CONFIG.scales[STATE.target]; const [lo,hi]=sc.total;
-  const g=Number(STATE.goal)||1520;
+  const g=Number(STATE.goal)||1600;
   return Math.max(lo+120, Math.min(hi, Math.round(g/10)*10));
 }
 /* Pure adaptive-exam helpers (unit-testable, no DOM) */
@@ -3339,7 +3339,7 @@ function viewSettings(v){
         <div class="muted" style="font-size:12px;margin-top:8px">Only the 11th-grade PSAT/NMSQT feeds National Merit.</div>
       </div>
       <div class="field"><label>Goal score — the number you’re aiming for (shown in gold on the dashboard)</label>
-        <input type="text" id="goal" inputmode="numeric" value="${goalScore()}" placeholder="1520"/>
+        <input type="text" id="goal" inputmode="numeric" value="${goalScore()}" placeholder="1600"/>
         <div class="muted" style="font-size:12px;margin-top:8px">Aim high! Clamped to your target test’s range (${CONFIG.scales[STATE.target].total[0]}–${CONFIG.scales[STATE.target].total[1]}).</div>
       </div>
       <div class="btnrow"><button class="btn gold" id="save">Save</button></div>
