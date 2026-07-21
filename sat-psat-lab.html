@@ -168,6 +168,22 @@ button{font-family:var(--font-ui);cursor:pointer}
 .exp .tag2{display:inline-block;font-size:11px;background:var(--navy-2);border:1px solid var(--line);border-radius:20px;padding:3px 10px;margin:2px 6px 2px 0;color:var(--muted)}
 .exp .strat{font-size:13px;color:var(--text);background:var(--navy-2);border-left:3px solid var(--gold);padding:9px 13px;border-radius:0 8px 8px 0;margin-top:8px}
 
+/* deep-teaching (math) */
+.deep{margin-top:10px;border:1px solid var(--line-soft);border-radius:10px;background:var(--navy-0);overflow:hidden}
+.deep>summary{cursor:pointer;list-style:none;padding:11px 14px;font-family:var(--font-head);font-size:13px;font-weight:600;color:var(--azure);display:flex;align-items:center;gap:8px;user-select:none}
+.deep>summary::-webkit-details-marker{display:none}
+.deep>summary::after{content:"▾";margin-left:auto;color:var(--muted-2);transition:.2s}
+.deep[open]>summary::after{transform:rotate(180deg)}
+.deep>summary:hover{background:var(--navy-2)}
+.deep-ico{font-size:15px}
+.deep-body{padding:4px 15px 14px;border-top:1px solid var(--line-soft)}
+.deep-sec{margin:12px 0}
+.deep-h{display:block;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);font-weight:600;margin-bottom:5px}
+.deep-sec p{margin:0;font-size:13.5px;line-height:1.6}
+.deep-steps{margin:0;padding-left:20px}
+.deep-steps li{font-size:13.5px;line-height:1.55;margin:5px 0}
+.deep-steps li::marker{color:var(--azure);font-family:var(--font-head)}
+
 /* pacing timer */
 .pacing{display:flex;align-items:center;gap:14px;background:var(--navy-2);border:1px solid var(--line-soft);border-radius:11px;padding:10px 15px;margin-bottom:14px}
 .pacing .clock{font-family:var(--font-head);font-size:20px;font-weight:600;letter-spacing:.03em}
@@ -2249,6 +2265,22 @@ function mathHTML(s,isHTML){
 function mathText(s){ // plain-text-ish for previews: convert then strip tags
   return mathHTML(s,false).replace(/<[^>]+>/g,'').replace(/&radic;/g,'√').replace(/&[a-z]+;/g,' ').trim();
 }
+/* Collapsible deep-teaching block for math questions (concept, steps, another way, check). */
+function deepHTML(q){
+  const d=q.deep; if(!d) return '';
+  const sec=(h,txt)=> txt? `<div class="deep-sec"><span class="deep-h">${h}</span><p>${mathHTML(txt,false)}</p></div>`:'';
+  const steps=(Array.isArray(d.steps)&&d.steps.length)
+    ? `<div class="deep-sec"><span class="deep-h">Step by step</span><ol class="deep-steps">${d.steps.map(s=>`<li>${mathHTML(s,false)}</li>`).join('')}</ol></div>` : '';
+  return `<details class="deep">
+    <summary><span class="deep-ico">📘</span> Understand it deeply — concept · steps · another way</summary>
+    <div class="deep-body">
+      ${sec('The idea',d.concept)}
+      ${steps}
+      ${sec('Another way',d.alt)}
+      ${sec('Check it',d.check)}
+    </div>
+  </details>`;
+}
 function toast(msg){
   if(!hasDoc) return;
   const t=el('toast'); if(!t) return;
@@ -2664,6 +2696,7 @@ function runQueue(container, opts){
             <span class="tag2">Difficulty · ${({E:'Easy',M:'Medium',H:'Hard'})[q.dif]}</span>
           </div>
           <div class="strat"><b>Strategy —</b> ${mathHTML(e.strat,false)}</div>
+          ${deepHTML(q)}
           <div class="spacer"></div>
           <div class="btnrow">
             <button class="btn" id="next">${idx+1<queue.length?'Next question':'See results'}</button>
@@ -2922,6 +2955,7 @@ function examResults(v){
       <div style="font-size:13px;margin-top:5px">${mathHTML(q.prompt,false)}</div>
       <div style="font-size:12.5px;margin-top:6px" class="muted">${r.correct?'':'Correct: '+(q.type==='spr'? q.ans.join(' / '):'ABCD'[q.ans]+') '+mathHTML(q.choices[q.ans],false))}</div>
       <div class="strat" style="margin-top:8px">${mathHTML(q.exp.why,false)}</div>
+      ${deepHTML(q)}
     </div>`;
   }).join('');
   v.innerHTML=`<div class="grid" style="margin-top:6px">
