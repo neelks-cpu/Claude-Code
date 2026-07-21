@@ -2641,10 +2641,11 @@ function viewFull(v){
     </div>
   </div>`;
 }
-function fillModule(sec,count,tier,exclude,seed){
-  // tier: 'mix' | 'hard' | 'easy'  — recycle if bank smaller than count.
-  // seed: if provided, selection is deterministic (stable test forms); else random.
-  let pool=QUESTIONS.filter(q=>q.sec===sec);
+function fillModule(sec,count,tier,exclude,seed,basePool){
+  // tier: 'mix' | 'hard' | 'easy'  — recycle only if the pool is smaller than count.
+  // seed: deterministic order when provided (stable forms); basePool: restrict to a
+  // specific disjoint slice (used by named test forms so they never share items).
+  let pool=(basePool||QUESTIONS.filter(q=>q.sec===sec)).slice();
   if(tier==='hard') pool=pool.filter(q=>q.dif!=='E').concat(pool);
   if(tier==='easy') pool=pool.filter(q=>q.dif!=='H').concat(pool);
   if(exclude&&exclude.length) pool=pool.filter(q=>!exclude.includes(q.id)).concat(pool.filter(q=>exclude.includes(q.id)));
@@ -2654,18 +2655,30 @@ function fillModule(sec,count,tier,exclude,seed){
   while(out.length<count && shuffled.length){ out.push(shuffled[i%shuffled.length]); i++; }
   return out;
 }
+/* Partition each section into 5 disjoint form pools (round-robin over a seeded
+   shuffle => even size and difficulty spread; stable across sessions). */
+const FORM_SEED=20260721;
+let _formPools={};
+function formPools(sec){
+  if(_formPools[sec]) return _formPools[sec];
+  const shuffled=seededShuffle(QUESTIONS.filter(q=>q.sec===sec), FORM_SEED+(sec==='rw'?1:2));
+  const parts=[[],[],[],[],[]];
+  shuffled.forEach((q,i)=>parts[i%5].push(q));
+  _formPools[sec]=parts; return parts;
+}
 function startFull(sec, form){
   const spec=FULL_SPEC[sec];
   const seedBase = form ? (form.i*131 + (sec==='rw'?7:19)) : null;
+  const pool = form ? formPools(sec)[form.i] : null;   // disjoint slice per form
   const label = form ? `Form ${form.numeral} · ${form.name}` : 'Full-length';
   FULLRUN.sec=sec; FULLRUN.detail=[]; FULLRUN.formName=label;
-  const m1=fillModule(sec,spec.modQ,'mix',[], seedBase);
+  const m1=fillModule(sec,spec.modQ,'mix',[], seedBase, pool);
   runFullModule(el('view'), sec, m1, 1, false, (r1)=>{
     FULLRUN.detail.push(...r1.detail);
     const correct=r1.detail.filter(x=>x.correct).length;
     const hard=correct>=Math.ceil(spec.modQ*0.6);
     FULLRUN.route=hard?'hard':'easy';
-    const m2=fillModule(sec,spec.modQ,hard?'hard':'easy',m1.map(q=>q.id), seedBase!=null?seedBase+53:null);
+    const m2=fillModule(sec,spec.modQ,hard?'hard':'easy',m1.map(q=>q.id), seedBase!=null?seedBase+53:null, pool);
     const v=el('view');
     v.innerHTML=`<div class="runner center card">
       <div class="eyebrow">${label} · Module 1 complete · ${correct}/${spec.modQ}</div>
@@ -2838,12 +2851,13 @@ const FORMS=[
   { i:4, numeral:'V',   name:'Polaris', blurb:'Full-spectrum final rehearsal before test day.' }
 ];
 function viewTests(v){
+  const rwPools=formPools('rw'), maPools=formPools('math');
   const cards=FORMS.map(f=>`<div class="form-card">
     <div class="form-star">${starSVG(f.i)}</div>
     <div class="form-num">Form ${f.numeral}</div>
     <div class="form-name">${f.name}</div>
     <div class="form-blurb">${f.blurb}</div>
-    <div class="form-spec">R&amp;W 27+27 · Math 22+22 · adaptive</div>
+    <div class="form-spec">${rwPools[f.i].length} R&amp;W · ${maPools[f.i].length} Math items — its own pool</div>
     <div class="btnrow" style="margin-top:10px">
       <button class="btn sm" onclick="startForm(${f.i},'rw')">Reading &amp; Writing</button>
       <button class="btn sm gold" onclick="startForm(${f.i},'math')">Math</button>
@@ -2852,8 +2866,8 @@ function viewTests(v){
   v.innerHTML=`<div class="grid" style="margin-top:6px">
     <div class="card">
       <div class="eyebrow">Full-length forms</div>
-      <h2 style="margin-top:4px">Five complete practice tests</h2>
-      <div class="sub">Each form is a distinct, reproducible composition with real digital-SAT structure and timing: two modules per section, Module&nbsp;1 routes you to a harder or easier Module&nbsp;2. Run a section at a time, just like Bluebook.</div>
+      <h2 style="margin-top:4px">Five complete practice tests — no shared questions</h2>
+      <div class="sub">Each form draws from its own disjoint slice of the bank, so Forms I–V never repeat an item. Real digital-SAT structure and timing: two modules per section, Module&nbsp;1 routes you to a harder or easier Module&nbsp;2. Run a section at a time, just like Bluebook.</div>
     </div>
     <div class="tests-grid">${cards}</div>
     <div class="card">
@@ -3184,7 +3198,7 @@ if(typeof window!=='undefined'){
   window.ScoreLab={ QUESTIONS, CONFIG, parseNum, sprCorrect, projectedTotal, projectedSection,
     domainMastery, sectionMastery, recordAttempt, mistakeIds, get STATE(){return STATE;}, go, buildReport,
     mathHTML, mathText, buildModule1, buildModule2, fillModule, routeDecision, estimateSectionScore,
-    weightedDraw, FULL_SPEC };
+    weightedDraw, FULL_SPEC, formPools, FORMS };
 }
 if(typeof module!=='undefined' && module.exports){
   module.exports={ QUESTIONS, CONFIG, parseNum, sprCorrect, projectedTotal, projectedSection,
